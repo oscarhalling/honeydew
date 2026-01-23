@@ -1,4 +1,6 @@
-// Footer DROPDOWN ACCORDION
+// =============================================
+// FOOTER ACCORDION
+// =============================================
 (function() {
   'use strict';
   const MOBILE_BREAKPOINT = 991;
