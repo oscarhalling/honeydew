@@ -1,5 +1,5 @@
-<!-- Footer DROPDOWN ACCORDION -->
 <script>
+  // Footer DROPDOWN ACCORDION
 (function() {
   'use strict';
   const MOBILE_BREAKPOINT = 991;
