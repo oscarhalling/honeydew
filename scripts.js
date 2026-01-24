@@ -393,6 +393,15 @@ document.addEventListener('visibilitychange', () => {
         el.style.animation = '';
       }
     });
+    
+    // Reset GSAP marquee timelines
+    gsap.globalTimeline.getChildren(true, true, true).forEach(tween => {
+      if (tween.repeat && tween.repeat() === -1) {
+        // Force infinite timelines to recalculate
+        const currentProgress = tween.progress();
+        tween.progress(0).progress(currentProgress);
+      }
+    });
   }
 });
 
