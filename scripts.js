@@ -366,6 +366,36 @@ gsap.ticker.add((time) => {
 });
 gsap.ticker.lagSmoothing(0);
 
+// =============================================
+// Handle Safari tab throttling (visibility change)
+// =============================================
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Tab hidden - pause everything
+    gsap.ticker.sleep();
+    lenis.stop();
+  } else {
+    // Tab visible - resume everything
+    gsap.ticker.wake();
+    lenis.start();
+    
+    // Give browser a moment to stabilize, then refresh ScrollTrigger
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+    });
+    
+    // Reset CSS marquee animations to prevent jumpiness
+    document.querySelectorAll('[class*="marquee-track"]').forEach(el => {
+      const currentAnimation = el.style.animation;
+      if (currentAnimation || getComputedStyle(el).animationName !== 'none') {
+        el.style.animation = 'none';
+        el.offsetHeight; // Force reflow
+        el.style.animation = '';
+      }
+    });
+  }
+});
+
 // Setting Lenis controls via data attributes
 $("[data-lenis-start]").on("click", function () {
   lenis.start();
