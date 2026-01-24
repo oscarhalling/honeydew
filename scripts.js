@@ -1241,14 +1241,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const mq = window.matchMedia('(max-width: 767px)');
   mq.addEventListener('change', initMarquee);
 
-  document.addEventListener('visibilitychange', () => {
-    if (!marqueeTimeline) return;
-    if (document.hidden) {
-      marqueeTimeline.pause();
-    } else {
-      marqueeTimeline.resume();
-    }
-  });
 
   // ============ INIT ============
 
