@@ -1322,62 +1322,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ============ MARQUEE SETUP ============
 
-  function initMarquee() {
-    if (marqueeTimeline) {
-      marqueeTimeline.kill();
-      marqueeTimeline = null;
-    }
-
-    track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"] video')
-      .forEach(destroyHls);
-
-    track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"]')
-      .forEach(clone => clone.remove());
-
-    gsap.set(track, { x: 0 });
-    track.offsetHeight;
-
-    const groupWidth = originalGroup.offsetWidth;
-    const viewportWidth = wrapper.offsetWidth;
-
-    if (groupWidth < 100) {
-      console.warn('Video marquee: Group width too small:', groupWidth);
-      return;
-    }
-
-    const clonesNeeded = Math.max(2, Math.ceil(viewportWidth / groupWidth) + 1);
-
-    for (let i = 0; i < clonesNeeded; i++) {
-      const clone = originalGroup.cloneNode(true);
-      clone.setAttribute('aria-hidden', 'true');
-
-      clone.querySelectorAll('.video-player').forEach(player => {
-        player.removeAttribute('data-initialized');
-        delete player._poster;
-        delete player._preview;
-      });
-
-      track.appendChild(clone);
-    }
-
-    initAllVideos();
-    initAllVideoPlayers();
-
-    if (CONFIG.reducedMotion) return;
-
-    const duration = groupWidth / CONFIG.speed;
-    track.style.willChange = 'transform';
-
-    marqueeTimeline = gsap.to(track, {
-      x: -groupWidth,
-      ease: 'none',
-      duration: duration,
-      repeat: -1,
-      modifiers: {
-        x: gsap.utils.unitize(x => parseFloat(x) % groupWidth)
-      }
-    });
+ function initMarquee() {
+  if (marqueeTimeline) {
+    marqueeTimeline.kill();
+    marqueeTimeline = null;
   }
+
+  track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"] video')
+    .forEach(destroyHls);
+
+  track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"]')
+    .forEach(clone => clone.remove());
+
+  gsap.set(track, { x: 0 });
+  track.offsetHeight;
+
+  const groupWidth = originalGroup.offsetWidth;
+  const viewportWidth = wrapper.offsetWidth;
+
+  if (groupWidth < 100) {
+    console.warn('Video marquee: Group width too small:', groupWidth);
+    return;
+  }
+
+  const clonesNeeded = Math.max(2, Math.ceil(viewportWidth / groupWidth) + 1);
+
+  for (let i = 0; i < clonesNeeded; i++) {
+    const clone = originalGroup.cloneNode(true);
+    clone.setAttribute('aria-hidden', 'true');
+
+    clone.querySelectorAll('.video-player').forEach(player => {
+      // Reset initialization state
+      player.removeAttribute('data-initialized');
+      
+      // Remove cloned elements that we'll recreate
+      player.querySelector('video')?.remove();
+      player.querySelector('.video-poster')?.remove();
+      player.querySelector('.video-preview')?.remove();
+      
+      // Clear references
+      delete player._poster;
+      delete player._preview;
+    });
+
+    track.appendChild(clone);
+  }
+
+  initAllVideos();
+  initAllVideoPlayers();
+
+  if (CONFIG.reducedMotion) return;
+
+  const duration = groupWidth / CONFIG.speed;
+  track.style.willChange = 'transform';
+
+  marqueeTimeline = gsap.to(track, {
+    x: -groupWidth,
+    ease: 'none',
+    duration: duration,
+    repeat: -1,
+    modifiers: {
+      x: gsap.utils.unitize(x => parseFloat(x) % groupWidth)
+    }
+  });
+}
 
   // ============ EVENT HANDLERS ============
 
