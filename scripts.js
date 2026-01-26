@@ -171,10 +171,11 @@ document.addEventListener("DOMContentLoaded", () => {
 (function() {
   function initPressSection() {
     const quoteText = document.querySelector('.press-quote-text');
+    const quoteWrapper = document.querySelector('.press-quotes-wrapper'); // Add this selector
     const logosWrapper = document.querySelector('.press-quotes');
     const logos = document.querySelectorAll('.press-quote');
     
-    if (!quoteText || !logosWrapper || !logos.length) return;
+    if (!quoteText || !quoteWrapper || !logosWrapper || !logos.length) return;
     
     const INTERVAL_TIME = 4000;
     const MOBILE_BREAKPOINT = 768;
@@ -184,6 +185,30 @@ document.addEventListener("DOMContentLoaded", () => {
     let desktopInterval = null;
     let swiper = null;
     let isMobile = window.innerWidth < MOBILE_BREAKPOINT;
+    
+    // ===== NEW: Pre-measure all quotes and lock height =====
+    function setQuoteWrapperHeight() {
+      const originalText = quoteText.textContent;
+      let maxHeight = 0;
+      
+      // Temporarily remove min-height to get accurate measurements
+      quoteWrapper.style.minHeight = '';
+      
+      // Measure each quote
+      logos.forEach(logo => {
+        const quote = logo.getAttribute('data-quote');
+        if (quote) {
+          quoteText.textContent = quote;
+          maxHeight = Math.max(maxHeight, quoteWrapper.offsetHeight);
+        }
+      });
+      
+      // Lock in the tallest height
+      quoteWrapper.style.minHeight = maxHeight + 'px';
+      
+      // Restore original text
+      quoteText.textContent = originalText;
+    }
     
     // ===== SHARED: Update quote text with fade =====
     function updateQuote(index) {
@@ -286,6 +311,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const wasMobile = isMobile;
       isMobile = window.innerWidth < MOBILE_BREAKPOINT;
       
+      // Recalculate height on resize
+      setQuoteWrapperHeight();
+      
       if (isMobile && !wasMobile) {
         stopDesktopAutoplay();
         initSwiper();
@@ -308,6 +336,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     
     setActive(0);
+    
+    // Lock height before starting animations
+    setQuoteWrapperHeight();
     
     if (isMobile) {
       initSwiper();
