@@ -1027,7 +1027,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let isHovering = false;
   let currentlyPlayingVideo = null;
   let hlsInstances = new Map();
-  let scrollDirection = 1; // 1 = down (forward), -1 = up (reverse)
 
   // ============ HLS SETUP ============
 
@@ -1163,7 +1162,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!marqueeTimeline || CONFIG.reducedMotion) return;
 
     const shouldPause = isHovering || currentlyPlayingVideo;
-    const targetTimeScale = shouldPause ? 0 : scrollDirection;
+    const targetTimeScale = shouldPause ? 0 : 1;
 
     gsap.killTweensOf(marqueeTimeline);
     gsap.to(marqueeTimeline, {
@@ -1188,11 +1187,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const preview = player._preview;
     let hlsInitialized = false;
     let isPlaying = false;
-
-    // Apply pointer-events: none to controls so hover reaches the player
-    if (videoControls) videoControls.style.pointerEvents = 'none';
-    if (playBtn) playBtn.style.pointerEvents = 'none';
-    if (muteBtn) muteBtn.style.pointerEvents = 'auto'; // Keep mute button clickable
 
     if (muteBtn) {
       gsap.set(muteBtn, { autoAlpha: 0, scale: 0.7 });
@@ -1223,10 +1217,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function animateToPlay() {
       if (playBtn) playBtn.classList.add('is-playing');
       if (videoControls) {
-        gsap.to(videoControls, { width: 40, height: 40, duration: 0.25, ease: 'power2.inOut' });
+        gsap.to(videoControls, { width: 60, height: 60, duration: 0.25, ease: 'power2.inOut' });
       }
       if (playBtn) {
-        gsap.to(playBtn, { scale: 0.85, duration: 0.25, ease: 'power2.inOut' });
+        gsap.to(playBtn, { scale: 0.80, duration: 0.25, ease: 'power2.inOut' });
       }
       if (muteBtn) {
         gsap.to(muteBtn, { autoAlpha: 1, scale: 1, duration: 0.25, delay: 0.05, ease: 'back.out(1.7)' });
@@ -1320,7 +1314,7 @@ document.addEventListener('DOMContentLoaded', () => {
     player.addEventListener('click', (e) => {
       // Don't toggle if clicking mute button
       if (muteBtn && muteBtn.contains(e.target)) return;
-
+      
       togglePlayPause();
     });
 
@@ -1356,11 +1350,6 @@ document.addEventListener('DOMContentLoaded', () => {
       marqueeTimeline = null;
     }
 
-    // Kill existing scroll direction trigger
-    ScrollTrigger.getAll().forEach(st => {
-      if (st.vars.trigger === wrapper) st.kill();
-    });
-
     track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"] video')
       .forEach(destroyHls);
 
@@ -1386,12 +1375,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       clone.querySelectorAll('.video-player').forEach(player => {
         player.removeAttribute('data-initialized');
-
+        
         // Remove cloned elements that we'll recreate
         player.querySelector('video')?.remove();
         player.querySelector('.video-poster')?.remove();
         player.querySelector('.video-preview')?.remove();
-
+        
         delete player._poster;
         delete player._preview;
       });
@@ -1408,31 +1397,12 @@ document.addEventListener('DOMContentLoaded', () => {
     track.style.willChange = 'transform';
 
     marqueeTimeline = gsap.to(track, {
-  x: -groupWidth,
-  ease: 'none',
-  duration: duration,
-  repeat: -1,
-  modifiers: {
-    x: gsap.utils.unitize(x => {
-      const val = parseFloat(x) % groupWidth;
-      // Handle both positive and negative directions
-      if (val > 0) return val - groupWidth;
-      return val;
-    })
-  }
-});
-
-    // Scroll direction detection
-    ScrollTrigger.create({
-      trigger: wrapper,
-      start: 'top bottom',
-      end: 'bottom top',
-      onUpdate: (self) => {
-        const newDirection = self.direction; // 1 = scrolling down, -1 = scrolling up
-        if (scrollDirection !== newDirection) {
-          scrollDirection = newDirection;
-          updateMarqueeSpeed();
-        }
+      x: -groupWidth,
+      ease: 'none',
+      duration: duration,
+      repeat: -1,
+      modifiers: {
+        x: gsap.utils.unitize(x => parseFloat(x) % groupWidth)
       }
     });
   }
@@ -1452,7 +1422,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Click outside video player pauses the video
   document.addEventListener('click', (e) => {
     if (!currentlyPlayingVideo) return;
-
+    
     // If click is outside any video player, pause
     if (!e.target.closest('.video-player')) {
       currentlyPlayingVideo._pauseVideo?.();
@@ -1466,7 +1436,6 @@ document.addEventListener('DOMContentLoaded', () => {
       currentlyPlayingVideo = null;
     }
     isHovering = false;
-    scrollDirection = 1;
     initMarquee();
   });
 
