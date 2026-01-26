@@ -1019,7 +1019,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const CONFIG = {
     speed: 50,
     easeDuration: 0.8,
-    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    mobileBreakpoint: 767
   };
 
   // ============ STATE ============
@@ -1027,6 +1028,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isHovering = false;
   let currentlyPlayingVideo = null;
   let hlsInstances = new Map();
+  let isMobile = window.innerWidth <= CONFIG.mobileBreakpoint;
 
   // ============ HLS SETUP ============
 
@@ -1156,6 +1158,42 @@ document.addEventListener('DOMContentLoaded', () => {
     wrapper.querySelectorAll('.video-player').forEach(createVideoElement);
   }
 
+  // ============ MOBILE CENTERING ============
+
+  function centerPlayerOnMobile(player) {
+    if (!isMobile || !marqueeTimeline) return;
+
+    // Get player position relative to track
+    const playerRect = player.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    
+    // Calculate where the player center currently is
+    const playerCenterX = playerRect.left + playerRect.width / 2;
+    const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
+    
+    // How much we need to shift
+    const offsetNeeded = playerCenterX - wrapperCenterX;
+    
+    // Get current track position
+    const currentX = gsap.getProperty(track, 'x');
+    const groupWidth = originalGroup.offsetWidth;
+    
+    // Calculate new position (keeping within the modulo range)
+    let newX = currentX - offsetNeeded;
+    
+    // Normalize to stay within the expected range for the modifiers
+    while (newX > 0) newX -= groupWidth;
+    while (newX < -groupWidth) newX += groupWidth;
+    
+    // Animate the track to center the player
+    gsap.to(track, {
+      x: newX,
+      duration: 0.4,
+      ease: 'power2.out',
+      overwrite: true
+    });
+  }
+
   // ============ MARQUEE CONTROL ============
 
   function updateMarqueeSpeed() {
@@ -1271,6 +1309,9 @@ document.addEventListener('DOMContentLoaded', () => {
         showVideo();
         animateToPlay();
         updateMarqueeSpeed();
+        
+        // Center the player on mobile after marquee pauses
+        centerPlayerOnMobile(player);
       }).catch(err => {
         console.warn('Video play failed:', err);
       });
@@ -1430,7 +1471,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const mq = window.matchMedia('(max-width: 767px)');
-  mq.addEventListener('change', () => {
+  mq.addEventListener('change', (e) => {
+    isMobile = e.matches;
     if (currentlyPlayingVideo) {
       currentlyPlayingVideo._resetVideo?.();
       currentlyPlayingVideo = null;
