@@ -1244,6 +1244,7 @@ function updateMarqueeSpeed() {
     }
   }
 }
+  
   // ============ VIDEO PLAYER ============
 
   function initVideoPlayer(player) {
