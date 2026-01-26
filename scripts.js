@@ -1203,37 +1203,25 @@ function centerPlayerOnMobile(player) {
 // ============ MARQUEE CONTROL ============
 
 function updateMarqueeSpeed() {
-  console.log('updateMarqueeSpeed called:', { 
-    hasTimeline: !!marqueeTimeline, 
-    reducedMotion: CONFIG.reducedMotion,
-    isHovering,
-    hasCurrentVideo: !!currentlyPlayingVideo,
-    isMobile
-  });
-  
   if (!marqueeTimeline || CONFIG.reducedMotion) return;
 
-  const shouldPause = isHovering || currentlyPlayingVideo;
-  
-  console.log('Should pause?', shouldPause);
+  // On mobile, ignore hover state - only pause for playing video
+  const shouldPause = isMobile 
+    ? !!currentlyPlayingVideo 
+    : (isHovering || !!currentlyPlayingVideo);
 
   gsap.killTweensOf(marqueeTimeline);
   
   if (shouldPause) {
     if (!isMobile) {
-      console.log('Desktop: easing timeScale to 0');
       gsap.to(marqueeTimeline, {
         timeScale: 0,
         duration: CONFIG.easeDuration,
         ease: 'power2.out'
       });
-    } else {
-      console.log('Mobile: timeline already paused by centerPlayerOnMobile');
     }
   } else {
     // Resuming
-    console.log('Resuming marquee...');
-    
     if (isMobile) {
       const currentX = gsap.getProperty(track, 'x');
       const groupWidth = originalGroup.offsetWidth;
@@ -1243,25 +1231,11 @@ function updateMarqueeSpeed() {
       
       const progress = Math.abs(normalizedX) / groupWidth;
       
-      console.log('Mobile resume:', { currentX, groupWidth, normalizedX, progress });
-      console.log('Timeline state BEFORE resume:', { 
-        paused: marqueeTimeline.paused(), 
-        timeScale: marqueeTimeline.timeScale(),
-        progress: marqueeTimeline.progress()
-      });
-      
       gsap.set(track, { x: normalizedX });
       marqueeTimeline.progress(progress);
       marqueeTimeline.timeScale(1);
       marqueeTimeline.play();
-      
-      console.log('Timeline state AFTER resume:', { 
-        paused: marqueeTimeline.paused(), 
-        timeScale: marqueeTimeline.timeScale(),
-        progress: marqueeTimeline.progress()
-      });
     } else {
-      console.log('Desktop: easing timeScale to 1');
       gsap.to(marqueeTimeline, {
         timeScale: 1,
         duration: CONFIG.easeDuration,
@@ -1270,7 +1244,6 @@ function updateMarqueeSpeed() {
     }
   }
 }
-
   // ============ VIDEO PLAYER ============
 
   function initVideoPlayer(player) {
