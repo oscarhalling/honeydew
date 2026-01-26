@@ -1217,10 +1217,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function animateToPlay() {
       if (playBtn) playBtn.classList.add('is-playing');
       if (videoControls) {
-        gsap.to(videoControls, { width: 60, height: 60, duration: 0.25, ease: 'power2.inOut' });
+        gsap.to(videoControls, { width: 40, height: 40, duration: 0.25, ease: 'power2.inOut' });
       }
       if (playBtn) {
-        gsap.to(playBtn, { scale: 0.80, duration: 0.25, ease: 'power2.inOut' });
+        gsap.to(playBtn, { scale: 0.85, duration: 0.25, ease: 'power2.inOut' });
       }
       if (muteBtn) {
         gsap.to(muteBtn, { autoAlpha: 1, scale: 1, duration: 0.25, delay: 0.05, ease: 'back.out(1.7)' });
