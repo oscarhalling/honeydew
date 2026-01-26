@@ -1353,15 +1353,17 @@ function updateMarqueeSpeed() {
     }
 
     function pauseVideo() {
-      if (!video) return;
+  console.log('pauseVideo called');
+  if (!video) return;
 
-      video.pause();
-      currentlyPlayingVideo = null;
-      isPlaying = false;
-      hideVideo();
-      animateToPause();
-      updateMarqueeSpeed();
-    }
+  video.pause();
+  currentlyPlayingVideo = null;
+  isPlaying = false;
+  hideVideo();
+  animateToPause();
+  updateMarqueeSpeed();
+  console.log('pauseVideo finished, updateMarqueeSpeed was called');
+}
 
     function togglePlayPause() {
       if (video.paused) {
