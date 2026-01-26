@@ -1003,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // =============================================
-// Video Testimonials
+// Video Testimonials - Bunny Stream + HLS
 // =============================================
 (function() {
   'use strict';
@@ -1018,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============ CONFIGURATION ============
   const CONFIG = {
     speed: 50,
-    easeDuration: 1.2,
+    easeDuration: 0.8,
     reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches
   };
 
@@ -1026,20 +1026,79 @@ document.addEventListener('DOMContentLoaded', () => {
   let marqueeTimeline = null;
   let isHovering = false;
   let currentlyPlayingVideo = null;
-  let scrollDirection = 1;
+  let hlsInstances = new Map();
+
+  // ============ HLS SETUP ============
+
+  function supportsHlsNatively() {
+    const video = document.createElement('video');
+    return video.canPlayType('application/vnd.apple.mpegurl') !== '';
+  }
+
+  function initHls(video, src) {
+    if (supportsHlsNatively()) {
+      video.src = src;
+      return;
+    }
+
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        startLevel: -1,
+        capLevelToPlayerSize: true,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60
+      });
+
+      hls.loadSource(src);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          console.error('HLS error:', data);
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.startLoad();
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+          } else {
+            hls.destroy();
+          }
+        }
+      });
+
+      hlsInstances.set(video, hls);
+    } else {
+      // Fallback for old browsers
+      video.src = src;
+    }
+  }
+
+  function destroyHls(video) {
+    const hls = hlsInstances.get(video);
+    if (hls) {
+      hls.destroy();
+      hlsInstances.delete(video);
+    }
+  }
 
   // ============ VIDEO ELEMENT CREATION ============
-  
+
   function createVideoElement(player) {
-    const src = player.dataset.videoSrc;
-    if (!src || player.querySelector('video')) return null;
-    
+    const hlsSrc = player.dataset.videoHls;
+    const posterSrc = player.dataset.poster;
+
+    if (!hlsSrc || player.querySelector('video')) return null;
+
     const video = document.createElement('video');
-    video.src = src;
     video.loop = true;
     video.playsInline = true;
     video.muted = false;
-    video.preload = 'metadata';
+    video.preload = 'none';
+
+    if (posterSrc) {
+      video.poster = posterSrc;
+    }
+
     video.style.cssText = `
       position: absolute;
       inset: 0;
@@ -1048,38 +1107,37 @@ document.addEventListener('DOMContentLoaded', () => {
       object-fit: cover;
       z-index: 1;
     `;
+
     player.insertBefore(video, player.firstChild);
+    video._hlsSrc = hlsSrc;
+
     return video;
   }
 
-  function preloadAllVideos() {
-    wrapper.querySelectorAll('.video-player').forEach(player => {
-      createVideoElement(player);
-    });
+  function initAllVideos() {
+    wrapper.querySelectorAll('.video-player').forEach(createVideoElement);
   }
 
   // ============ MARQUEE CONTROL ============
 
   function updateMarqueeSpeed() {
-    if (!marqueeTimeline) return;
-    
-    const isPaused = isHovering || currentlyPlayingVideo;
-    const targetTimeScale = isPaused ? 0 : scrollDirection;
-    
-    gsap.to(marqueeTimeline, { 
-      timeScale: targetTimeScale, 
+    if (!marqueeTimeline || CONFIG.reducedMotion) return;
+
+    const shouldPause = isHovering || currentlyPlayingVideo;
+    const targetTimeScale = shouldPause ? 0 : 1;
+
+    gsap.killTweensOf(marqueeTimeline);
+    gsap.to(marqueeTimeline, {
+      timeScale: targetTimeScale,
       duration: CONFIG.easeDuration,
-      ease: 'power3.out',
-      overwrite: true
+      ease: 'power2.out'
     });
   }
 
   // ============ VIDEO PLAYER ============
 
   function initVideoPlayer(player) {
-    const src = player.dataset.videoSrc;
-    if (!src || player.dataset.initialized === 'true') return;
-    
+    if (player.dataset.initialized === 'true') return;
     player.dataset.initialized = 'true';
 
     const videoControls = player.querySelector('.video-controls');
@@ -1088,48 +1146,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!playBtn) return;
 
-    let video = player.querySelector('video') || createVideoElement(player);
+    const video = player.querySelector('video');
+    let hlsInitialized = false;
 
-    gsap.set(muteBtn, { autoAlpha: 0, scale: 0.7 });
+    if (muteBtn) {
+      gsap.set(muteBtn, { autoAlpha: 0, scale: 0.7 });
+    }
 
     function animateToPlay() {
       playBtn.classList.add('is-playing');
-      gsap.to(videoControls, { width: 40, height: 40, duration: 0.25, ease: 'power2.inOut' });
+      if (videoControls) {
+        gsap.to(videoControls, { width: 40, height: 40, duration: 0.25, ease: 'power2.inOut' });
+      }
       gsap.to(playBtn, { scale: 0.85, duration: 0.25, ease: 'power2.inOut' });
-      gsap.to(muteBtn, { autoAlpha: 1, scale: 1, duration: 0.25, delay: 0.05, ease: 'back.out(1.7)' });
+      if (muteBtn) {
+        gsap.to(muteBtn, { autoAlpha: 1, scale: 1, duration: 0.25, delay: 0.05, ease: 'back.out(1.7)' });
+      }
     }
 
     function animateToPause() {
       playBtn.classList.remove('is-playing');
-      gsap.to(videoControls, { width: 70, height: 70, duration: 0.25, ease: 'power2.inOut' });
+      if (videoControls) {
+        gsap.to(videoControls, { width: 70, height: 70, duration: 0.25, ease: 'power2.inOut' });
+      }
       gsap.to(playBtn, { scale: 1, duration: 0.25, ease: 'power2.inOut' });
-      gsap.to(muteBtn, { autoAlpha: 0, scale: 0.7, duration: 0.2, ease: 'power2.in' });
+      if (muteBtn) {
+        gsap.to(muteBtn, { autoAlpha: 0, scale: 0.7, duration: 0.2, ease: 'power2.in' });
+      }
     }
 
     function resetPlayer() {
       if (video && !video.paused) {
         video.pause();
+        video.currentTime = 0;
         animateToPause();
       }
     }
 
-    player.addEventListener('mouseenter', () => {
-      if (video) video.preload = 'auto';
-    });
+    player._resetVideo = resetPlayer;
 
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (!video) return;
 
       if (video.paused) {
+        // Lazy-load HLS on first play
+        if (!hlsInitialized && video._hlsSrc) {
+          initHls(video, video._hlsSrc);
+          hlsInitialized = true;
+        }
+
         if (currentlyPlayingVideo && currentlyPlayingVideo !== player) {
-          currentlyPlayingVideo.resetFunc();
+          currentlyPlayingVideo._resetVideo?.();
         }
 
         video.play().then(() => {
           currentlyPlayingVideo = player;
           animateToPlay();
           updateMarqueeSpeed();
+        }).catch(err => {
+          console.warn('Video play failed:', err);
         });
       } else {
         video.pause();
@@ -1146,7 +1222,13 @@ document.addEventListener('DOMContentLoaded', () => {
       muteBtn.classList.toggle('is-muted', video.muted);
     });
 
-    player.resetFunc = resetPlayer;
+    video?.addEventListener('ended', () => {
+      if (currentlyPlayingVideo === player) {
+        currentlyPlayingVideo = null;
+        animateToPause();
+        updateMarqueeSpeed();
+      }
+    });
   }
 
   function initAllVideoPlayers() {
@@ -1156,22 +1238,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============ MARQUEE SETUP ============
 
   function initMarquee() {
-    // Kill existing timeline and ScrollTrigger
     if (marqueeTimeline) {
       marqueeTimeline.kill();
+      marqueeTimeline = null;
     }
-    ScrollTrigger.getAll().forEach(st => {
-      if (st.vars.trigger === 'body') st.kill();
-    });
 
-    // Remove existing clones
+    // Cleanup HLS instances from clones
+    track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"] video')
+      .forEach(destroyHls);
+
     track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"]')
       .forEach(clone => clone.remove());
 
-    // Reset position
-    gsap.set(track, { xPercent: 0 });
+    gsap.set(track, { x: 0 });
+    track.offsetHeight;
 
-    // Measure
     const groupWidth = originalGroup.offsetWidth;
     const viewportWidth = wrapper.offsetWidth;
 
@@ -1180,58 +1261,36 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Clone enough groups to fill viewport + buffer
-    const clonesNeeded = Math.ceil(viewportWidth / groupWidth) + 1;
+    const clonesNeeded = Math.max(2, Math.ceil(viewportWidth / groupWidth) + 1);
 
     for (let i = 0; i < clonesNeeded; i++) {
       const clone = originalGroup.cloneNode(true);
       clone.setAttribute('aria-hidden', 'true');
-      
+
       clone.querySelectorAll('.video-player').forEach(player => {
         player.removeAttribute('data-initialized');
       });
-      
+
       track.appendChild(clone);
     }
 
-    // Initialize cloned video players
+    initAllVideos();
     initAllVideoPlayers();
-    preloadAllVideos();
 
-    // Calculate duration based on speed (pixels per second)
+    if (CONFIG.reducedMotion) return;
+
     const duration = groupWidth / CONFIG.speed;
+    track.style.willChange = 'transform';
 
-    // Calculate how far to move (one group width as percentage of total track)
-    const totalGroups = clonesNeeded + 1;
-    const movePercent = 100 / totalGroups;
-
-    // Create the timeline
-    if (!CONFIG.reducedMotion) {
-      marqueeTimeline = gsap.timeline({ 
-        repeat: -1,
-        onReverseComplete: function() {
-          this.progress(1);
-        }
-      });
-      
-      marqueeTimeline.fromTo(track,
-        { xPercent: 0 },
-        { xPercent: -movePercent, ease: 'none', duration: duration }
-      );
-
-      // Scroll direction detection
-      ScrollTrigger.create({
-        trigger: 'body',
-        start: 'top top',
-        end: 'bottom bottom',
-        onUpdate: (self) => {
-          if (scrollDirection !== self.direction) {
-            scrollDirection = self.direction;
-            updateMarqueeSpeed();
-          }
-        }
-      });
-    }
+    marqueeTimeline = gsap.to(track, {
+      x: -groupWidth,
+      ease: 'none',
+      duration: duration,
+      repeat: -1,
+      modifiers: {
+        x: gsap.utils.unitize(x => parseFloat(x) % groupWidth)
+      }
+    });
   }
 
   // ============ EVENT HANDLERS ============
@@ -1246,15 +1305,28 @@ document.addEventListener('DOMContentLoaded', () => {
     updateMarqueeSpeed();
   });
 
-  // Reinitialize only at 767px breakpoint
   const mq = window.matchMedia('(max-width: 767px)');
-  mq.addEventListener('change', initMarquee);
+  mq.addEventListener('change', () => {
+    if (currentlyPlayingVideo) {
+      currentlyPlayingVideo._resetVideo?.();
+      currentlyPlayingVideo = null;
+    }
+    isHovering = false;
+    initMarquee();
+  });
 
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && currentlyPlayingVideo) {
+      currentlyPlayingVideo._resetVideo?.();
+      currentlyPlayingVideo = null;
+      updateMarqueeSpeed();
+    }
+  });
 
   // ============ INIT ============
 
   function init() {
-    preloadAllVideos();
+    initAllVideos();
     initAllVideoPlayers();
     initMarquee();
   }
@@ -1262,7 +1334,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
-    init();
+    requestAnimationFrame(init);
   }
 
 })();
