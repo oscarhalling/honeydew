@@ -1103,6 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
         object-fit: cover;
         z-index: 2;
         transition: opacity 0.3s ease;
+        pointer-events: none;
       `;
       player.insertBefore(poster, player.firstChild);
       player._poster = poster;
@@ -1122,8 +1123,8 @@ document.addEventListener('DOMContentLoaded', () => {
         z-index: 1;
         opacity: 0;
         transition: opacity 0.3s ease;
+        pointer-events: none;
       `;
-      // Don't load preview until needed
       preview.dataset.src = previewSrc;
       player.insertBefore(preview, player.firstChild);
       player._preview = preview;
@@ -1142,6 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
       height: 100%;
       object-fit: cover;
       z-index: 0;
+      pointer-events: none;
     `;
 
     player.insertBefore(video, player.firstChild);
@@ -1180,8 +1182,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const playBtn = player.querySelector('.video-play-btn');
     const muteBtn = player.querySelector('.video-mute-btn');
 
-    if (!playBtn) return;
-
     const video = player.querySelector('video');
     const poster = player._poster;
     const preview = player._preview;
@@ -1193,15 +1193,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // -------- HOVER PREVIEW --------
-    
+
     function showPreview() {
       if (isPlaying || !preview) return;
-      
-      // Lazy-load preview on first hover
+
       if (!preview.src && preview.dataset.src) {
         preview.src = preview.dataset.src;
       }
-      
+
       preview.style.opacity = '1';
     }
 
@@ -1216,22 +1215,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // -------- PLAY/PAUSE ANIMATIONS --------
 
     function animateToPlay() {
-      playBtn.classList.add('is-playing');
+      if (playBtn) playBtn.classList.add('is-playing');
       if (videoControls) {
         gsap.to(videoControls, { width: 40, height: 40, duration: 0.25, ease: 'power2.inOut' });
       }
-      gsap.to(playBtn, { scale: 0.85, duration: 0.25, ease: 'power2.inOut' });
+      if (playBtn) {
+        gsap.to(playBtn, { scale: 0.85, duration: 0.25, ease: 'power2.inOut' });
+      }
       if (muteBtn) {
         gsap.to(muteBtn, { autoAlpha: 1, scale: 1, duration: 0.25, delay: 0.05, ease: 'back.out(1.7)' });
       }
     }
 
     function animateToPause() {
-      playBtn.classList.remove('is-playing');
+      if (playBtn) playBtn.classList.remove('is-playing');
       if (videoControls) {
         gsap.to(videoControls, { width: 70, height: 70, duration: 0.25, ease: 'power2.inOut' });
       }
-      gsap.to(playBtn, { scale: 1, duration: 0.25, ease: 'power2.inOut' });
+      if (playBtn) {
+        gsap.to(playBtn, { scale: 1, duration: 0.25, ease: 'power2.inOut' });
+      }
       if (muteBtn) {
         gsap.to(muteBtn, { autoAlpha: 0, scale: 0.7, duration: 0.2, ease: 'power2.in' });
       }
@@ -1248,6 +1251,50 @@ document.addEventListener('DOMContentLoaded', () => {
       video.style.zIndex = '0';
     }
 
+    function playVideo() {
+      if (!video) return;
+
+      // Lazy-load HLS on first play
+      if (!hlsInitialized && video._hlsSrc) {
+        initHls(video, video._hlsSrc);
+        hlsInitialized = true;
+      }
+
+      // Stop any other playing video
+      if (currentlyPlayingVideo && currentlyPlayingVideo !== player) {
+        currentlyPlayingVideo._resetVideo?.();
+      }
+
+      video.play().then(() => {
+        currentlyPlayingVideo = player;
+        isPlaying = true;
+        showVideo();
+        animateToPlay();
+        updateMarqueeSpeed();
+      }).catch(err => {
+        console.warn('Video play failed:', err);
+      });
+    }
+
+    function pauseVideo() {
+      if (!video) return;
+
+      video.pause();
+      currentlyPlayingVideo = null;
+      isPlaying = false;
+      hideVideo();
+      animateToPause();
+      updateMarqueeSpeed();
+    }
+
+    function togglePlayPause() {
+      if (video.paused) {
+        playVideo();
+      } else {
+        pauseVideo();
+      }
+    }
+
     function resetPlayer() {
       if (video && !video.paused) {
         video.pause();
@@ -1259,41 +1306,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     player._resetVideo = resetPlayer;
+    player._pauseVideo = pauseVideo;
 
-    // -------- PLAY BUTTON --------
+    // -------- CLICK HANDLERS --------
 
-    playBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!video) return;
-
-      if (video.paused) {
-        // Lazy-load HLS on first play
-        if (!hlsInitialized && video._hlsSrc) {
-          initHls(video, video._hlsSrc);
-          hlsInitialized = true;
-        }
-
-        if (currentlyPlayingVideo && currentlyPlayingVideo !== player) {
-          currentlyPlayingVideo._resetVideo?.();
-        }
-
-        video.play().then(() => {
-          currentlyPlayingVideo = player;
-          isPlaying = true;
-          showVideo();
-          animateToPlay();
-          updateMarqueeSpeed();
-        }).catch(err => {
-          console.warn('Video play failed:', err);
-        });
-      } else {
-        video.pause();
-        currentlyPlayingVideo = null;
-        isPlaying = false;
-        hideVideo();
-        animateToPause();
-        updateMarqueeSpeed();
-      }
+    // Entire card is clickable for play/pause
+    player.addEventListener('click', (e) => {
+      // Don't toggle if clicking mute button
+      if (muteBtn && muteBtn.contains(e.target)) return;
+      
+      togglePlayPause();
     });
 
     // -------- MUTE BUTTON --------
@@ -1322,70 +1344,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ============ MARQUEE SETUP ============
 
- function initMarquee() {
-  if (marqueeTimeline) {
-    marqueeTimeline.kill();
-    marqueeTimeline = null;
-  }
-
-  track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"] video')
-    .forEach(destroyHls);
-
-  track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"]')
-    .forEach(clone => clone.remove());
-
-  gsap.set(track, { x: 0 });
-  track.offsetHeight;
-
-  const groupWidth = originalGroup.offsetWidth;
-  const viewportWidth = wrapper.offsetWidth;
-
-  if (groupWidth < 100) {
-    console.warn('Video marquee: Group width too small:', groupWidth);
-    return;
-  }
-
-  const clonesNeeded = Math.max(2, Math.ceil(viewportWidth / groupWidth) + 1);
-
-  for (let i = 0; i < clonesNeeded; i++) {
-    const clone = originalGroup.cloneNode(true);
-    clone.setAttribute('aria-hidden', 'true');
-
-    clone.querySelectorAll('.video-player').forEach(player => {
-      // Reset initialization state
-      player.removeAttribute('data-initialized');
-      
-      // Remove cloned elements that we'll recreate
-      player.querySelector('video')?.remove();
-      player.querySelector('.video-poster')?.remove();
-      player.querySelector('.video-preview')?.remove();
-      
-      // Clear references
-      delete player._poster;
-      delete player._preview;
-    });
-
-    track.appendChild(clone);
-  }
-
-  initAllVideos();
-  initAllVideoPlayers();
-
-  if (CONFIG.reducedMotion) return;
-
-  const duration = groupWidth / CONFIG.speed;
-  track.style.willChange = 'transform';
-
-  marqueeTimeline = gsap.to(track, {
-    x: -groupWidth,
-    ease: 'none',
-    duration: duration,
-    repeat: -1,
-    modifiers: {
-      x: gsap.utils.unitize(x => parseFloat(x) % groupWidth)
+  function initMarquee() {
+    if (marqueeTimeline) {
+      marqueeTimeline.kill();
+      marqueeTimeline = null;
     }
-  });
-}
+
+    track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"] video')
+      .forEach(destroyHls);
+
+    track.querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"]')
+      .forEach(clone => clone.remove());
+
+    gsap.set(track, { x: 0 });
+    track.offsetHeight;
+
+    const groupWidth = originalGroup.offsetWidth;
+    const viewportWidth = wrapper.offsetWidth;
+
+    if (groupWidth < 100) {
+      console.warn('Video marquee: Group width too small:', groupWidth);
+      return;
+    }
+
+    const clonesNeeded = Math.max(2, Math.ceil(viewportWidth / groupWidth) + 1);
+
+    for (let i = 0; i < clonesNeeded; i++) {
+      const clone = originalGroup.cloneNode(true);
+      clone.setAttribute('aria-hidden', 'true');
+
+      clone.querySelectorAll('.video-player').forEach(player => {
+        player.removeAttribute('data-initialized');
+        
+        // Remove cloned elements that we'll recreate
+        player.querySelector('video')?.remove();
+        player.querySelector('.video-poster')?.remove();
+        player.querySelector('.video-preview')?.remove();
+        
+        delete player._poster;
+        delete player._preview;
+      });
+
+      track.appendChild(clone);
+    }
+
+    initAllVideos();
+    initAllVideoPlayers();
+
+    if (CONFIG.reducedMotion) return;
+
+    const duration = groupWidth / CONFIG.speed;
+    track.style.willChange = 'transform';
+
+    marqueeTimeline = gsap.to(track, {
+      x: -groupWidth,
+      ease: 'none',
+      duration: duration,
+      repeat: -1,
+      modifiers: {
+        x: gsap.utils.unitize(x => parseFloat(x) % groupWidth)
+      }
+    });
+  }
 
   // ============ EVENT HANDLERS ============
 
@@ -1397,6 +1417,16 @@ document.addEventListener('DOMContentLoaded', () => {
   track.addEventListener('mouseleave', () => {
     isHovering = false;
     updateMarqueeSpeed();
+  });
+
+  // Click outside video player pauses the video
+  document.addEventListener('click', (e) => {
+    if (!currentlyPlayingVideo) return;
+    
+    // If click is outside any video player, pause
+    if (!e.target.closest('.video-player')) {
+      currentlyPlayingVideo._pauseVideo?.();
+    }
   });
 
   const mq = window.matchMedia('(max-width: 767px)');
