@@ -1217,7 +1217,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function animateToPlay() {
       if (playBtn) playBtn.classList.add('is-playing');
       if (videoControls) {
-        gsap.to(videoControls, { width: 54, height: 54, duration: 0.25, ease: 'power2.inOut' });
+        gsap.to(videoControls, { width: 60, height: 60, duration: 0.25, ease: 'power2.inOut' });
       }
       if (playBtn) {
         gsap.to(playBtn, { scale: 0.80, duration: 0.25, ease: 'power2.inOut' });
