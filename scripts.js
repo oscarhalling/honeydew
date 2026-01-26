@@ -578,9 +578,7 @@ const isMobile = getBreakpoint() === 'mobile';
     carousel.prevBtns = prevBtns;
     carousel.nextBtns = nextBtns;
 
-    // Get responsive values
-    const offset = getResponsiveValue(viewport, 'offset');
-    const gap = getResponsiveValue(viewport, 'gap');
+
 
     // Build Swiper config
     const swiperConfig = {
@@ -726,7 +724,6 @@ const isMobile = getBreakpoint() === 'mobile';
   carousel.swiper.params.centeredSlidesBounds = isMobile;
   carousel.swiper.update();
 }
-        }
       });
     }, 100);
   }
