@@ -546,6 +546,10 @@ $("[data-lenis-toggle]").on("click", function () {
 
   function initCarousel(carousel) {
     const { viewport, index } = carousel;
+    // Get responsive values
+const offset = getResponsiveValue(viewport, 'offset');
+const gap = getResponsiveValue(viewport, 'gap');
+const isMobile = getBreakpoint() === 'mobile';
     
     const track = viewport.children[0];
     if (!track) {
@@ -586,6 +590,8 @@ $("[data-lenis-toggle]").on("click", function () {
       slidesPerView: CONFIG.slidesPerView,
       spaceBetween: gap,
       slidesOffsetAfter: offset,
+      centeredSlides: isMobile,
+  centeredSlidesBounds: isMobile,  // Keeps first/last slides at edges
       
       speed: CONFIG.speed,
       freeMode: CONFIG.freeMode,
@@ -709,13 +715,17 @@ $("[data-lenis-toggle]").on("click", function () {
         } else if (!shouldBe && isActive) {
           destroyCarousel(carousel);
         } else if (isActive) {
-          // Update values for active carousels
-          const newOffset = getResponsiveValue(carousel.viewport, 'offset');
-          const newGap = getResponsiveValue(carousel.viewport, 'gap');
-          
-          carousel.swiper.params.slidesOffsetAfter = newOffset;
-          carousel.swiper.params.spaceBetween = newGap;
-          carousel.swiper.update();
+  // Update values for active carousels
+  const newOffset = getResponsiveValue(carousel.viewport, 'offset');
+  const newGap = getResponsiveValue(carousel.viewport, 'gap');
+  const isMobile = newBreakpoint === 'mobile';
+  
+  carousel.swiper.params.slidesOffsetAfter = newOffset;
+  carousel.swiper.params.spaceBetween = newGap;
+  carousel.swiper.params.centeredSlides = isMobile;
+  carousel.swiper.params.centeredSlidesBounds = isMobile;
+  carousel.swiper.update();
+}
         }
       });
     }, 100);
