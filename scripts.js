@@ -1161,7 +1161,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============ MOBILE CENTERING ============
 
 function centerPlayerOnMobile(player) {
-  if (!isMobile || !marqueeTimeline) return;
+  if (!isMobile || !marqueeTimeline) {
+    console.log('centerPlayerOnMobile: skipped', { isMobile, hasTimeline: !!marqueeTimeline });
+    return;
+  }
 
   const playerRect = player.getBoundingClientRect();
   const wrapperRect = wrapper.getBoundingClientRect();
@@ -1174,8 +1177,20 @@ function centerPlayerOnMobile(player) {
   const currentX = gsap.getProperty(track, 'x');
   const newX = currentX - offsetNeeded;
   
-  // Pause timeline and animate freely
+  console.log('centerPlayerOnMobile:', { currentX, newX, offsetNeeded });
+  console.log('Timeline state BEFORE pause:', { 
+    paused: marqueeTimeline.paused(), 
+    timeScale: marqueeTimeline.timeScale(),
+    progress: marqueeTimeline.progress()
+  });
+  
   marqueeTimeline.pause();
+  
+  console.log('Timeline state AFTER pause:', { 
+    paused: marqueeTimeline.paused(), 
+    timeScale: marqueeTimeline.timeScale(),
+    progress: marqueeTimeline.progress()
+  });
   
   gsap.to(track, {
     x: newX,
@@ -1185,47 +1200,68 @@ function centerPlayerOnMobile(player) {
   });
 }
 
- // ============ MARQUEE CONTROL ============
+// ============ MARQUEE CONTROL ============
 
 function updateMarqueeSpeed() {
+  console.log('updateMarqueeSpeed called:', { 
+    hasTimeline: !!marqueeTimeline, 
+    reducedMotion: CONFIG.reducedMotion,
+    isHovering,
+    hasCurrentVideo: !!currentlyPlayingVideo,
+    isMobile
+  });
+  
   if (!marqueeTimeline || CONFIG.reducedMotion) return;
 
   const shouldPause = isHovering || currentlyPlayingVideo;
+  
+  console.log('Should pause?', shouldPause);
 
   gsap.killTweensOf(marqueeTimeline);
   
   if (shouldPause) {
-    // On desktop, ease the timeScale down. On mobile, timeline is already paused by centerPlayerOnMobile
     if (!isMobile) {
+      console.log('Desktop: easing timeScale to 0');
       gsap.to(marqueeTimeline, {
         timeScale: 0,
         duration: CONFIG.easeDuration,
         ease: 'power2.out'
       });
+    } else {
+      console.log('Mobile: timeline already paused by centerPlayerOnMobile');
     }
   } else {
     // Resuming
+    console.log('Resuming marquee...');
+    
     if (isMobile) {
-      // Re-sync timeline to current track position
       const currentX = gsap.getProperty(track, 'x');
       const groupWidth = originalGroup.offsetWidth;
       
-      // Normalize position to 0 to -groupWidth range
       let normalizedX = currentX % groupWidth;
       if (normalizedX > 0) normalizedX -= groupWidth;
       
-      // Set track to normalized position
-      gsap.set(track, { x: normalizedX });
-      
-      // Calculate progress (0 to 1) based on position
       const progress = Math.abs(normalizedX) / groupWidth;
-      marqueeTimeline.progress(progress);
       
-      // Reset timeScale and play
+      console.log('Mobile resume:', { currentX, groupWidth, normalizedX, progress });
+      console.log('Timeline state BEFORE resume:', { 
+        paused: marqueeTimeline.paused(), 
+        timeScale: marqueeTimeline.timeScale(),
+        progress: marqueeTimeline.progress()
+      });
+      
+      gsap.set(track, { x: normalizedX });
+      marqueeTimeline.progress(progress);
       marqueeTimeline.timeScale(1);
       marqueeTimeline.play();
+      
+      console.log('Timeline state AFTER resume:', { 
+        paused: marqueeTimeline.paused(), 
+        timeScale: marqueeTimeline.timeScale(),
+        progress: marqueeTimeline.progress()
+      });
     } else {
-      // Desktop: ease timeScale back up
+      console.log('Desktop: easing timeScale to 1');
       gsap.to(marqueeTimeline, {
         timeScale: 1,
         duration: CONFIG.easeDuration,
