@@ -256,15 +256,19 @@ document.addEventListener("DOMContentLoaded", () => {
       startDesktopAutoplay();
     }
     
-    // ===== DESKTOP: Click handlers =====
-    logos.forEach((logo, index) => {
-      logo.addEventListener('click', () => {
-        if (!isMobile) {
-          setActive(index);
-          resetDesktopAutoplay();
-        }
-      });
-    });
+    // ===== CLICK HANDLERS (Desktop + Mobile) =====
+logos.forEach((logo, index) => {
+  logo.addEventListener('click', () => {
+    if (isMobile && swiper) {
+      // Mobile: let Swiper handle the slide, which triggers setActive via slideChange
+      swiper.slideToLoop(index);
+    } else {
+      // Desktop: direct update
+      setActive(index);
+      resetDesktopAutoplay();
+    }
+  });
+});
     
     // ===== MOBILE: Swiper =====
     function initSwiper() {
