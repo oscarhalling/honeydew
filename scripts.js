@@ -1408,14 +1408,19 @@ document.addEventListener('DOMContentLoaded', () => {
     track.style.willChange = 'transform';
 
     marqueeTimeline = gsap.to(track, {
-      x: -groupWidth,
-      ease: 'none',
-      duration: duration,
-      repeat: -1,
-      modifiers: {
-        x: gsap.utils.unitize(x => parseFloat(x) % groupWidth)
-      }
-    });
+  x: -groupWidth,
+  ease: 'none',
+  duration: duration,
+  repeat: -1,
+  modifiers: {
+    x: gsap.utils.unitize(x => {
+      const val = parseFloat(x) % groupWidth;
+      // Handle both positive and negative directions
+      if (val > 0) return val - groupWidth;
+      return val;
+    })
+  }
+});
 
     // Scroll direction detection
     ScrollTrigger.create({
