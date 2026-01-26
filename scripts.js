@@ -1160,29 +1160,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ============ MOBILE CENTERING ============
 
-function centerPlayerOnMobile(player) {
-  if (!isMobile || !marqueeTimeline) return;
+  function centerPlayerOnMobile(player) {
+    if (!isMobile || !marqueeTimeline) return;
 
-  const playerRect = player.getBoundingClientRect();
-  const wrapperRect = wrapper.getBoundingClientRect();
-  
-  const playerCenterX = playerRect.left + playerRect.width / 2;
-  const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
-  
-  const offsetNeeded = playerCenterX - wrapperCenterX;
-  
-  // Simply adjust by the offset - no normalization needed
-  // The modifiers in the timeline will handle wrapping when it resumes
-  const currentX = gsap.getProperty(track, 'x');
-  const newX = currentX - offsetNeeded;
-  
-  gsap.to(track, {
-    x: newX,
-    duration: 0.4,
-    ease: 'power2.out',
-    overwrite: true
-  });
-}
+    const playerRect = player.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    
+    const playerCenterX = playerRect.left + playerRect.width / 2;
+    const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
+    
+    const offsetNeeded = playerCenterX - wrapperCenterX;
+    
+    const currentX = gsap.getProperty(track, 'x');
+    const newX = currentX - offsetNeeded;
+    
+    // Pause timeline and animate freely
+    marqueeTimeline.pause();
+    
+    gsap.to(track, {
+      x: newX,
+      duration: 0.4,
+      ease: 'power2.out',
+      overwrite: true
+    });
+  }
 
   // ============ MARQUEE CONTROL ============
 
@@ -1193,6 +1194,24 @@ function centerPlayerOnMobile(player) {
     const targetTimeScale = shouldPause ? 0 : 1;
 
     gsap.killTweensOf(marqueeTimeline);
+    
+    // If resuming on mobile, sync timeline progress to current track position
+    if (!shouldPause && isMobile) {
+      const currentX = gsap.getProperty(track, 'x');
+      const groupWidth = originalGroup.offsetWidth;
+      
+      // Normalize position to 0 to -groupWidth range
+      let normalizedX = currentX % groupWidth;
+      if (normalizedX > 0) normalizedX -= groupWidth;
+      
+      // Set track to normalized position
+      gsap.set(track, { x: normalizedX });
+      
+      // Calculate progress (0 to 1) based on position
+      const progress = Math.abs(normalizedX) / groupWidth;
+      marqueeTimeline.progress(progress);
+    }
+    
     gsap.to(marqueeTimeline, {
       timeScale: targetTimeScale,
       duration: CONFIG.easeDuration,
