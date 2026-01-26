@@ -1160,39 +1160,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ============ MOBILE CENTERING ============
 
-  function centerPlayerOnMobile(player) {
-    if (!isMobile || !marqueeTimeline) return;
+function centerPlayerOnMobile(player) {
+  if (!isMobile || !marqueeTimeline) return;
 
-    // Get player position relative to track
-    const playerRect = player.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    
-    // Calculate where the player center currently is
-    const playerCenterX = playerRect.left + playerRect.width / 2;
-    const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
-    
-    // How much we need to shift
-    const offsetNeeded = playerCenterX - wrapperCenterX;
-    
-    // Get current track position
-    const currentX = gsap.getProperty(track, 'x');
-    const groupWidth = originalGroup.offsetWidth;
-    
-    // Calculate new position (keeping within the modulo range)
-    let newX = currentX - offsetNeeded;
-    
-    // Normalize to stay within the expected range for the modifiers
-    while (newX > 0) newX -= groupWidth;
-    while (newX < -groupWidth) newX += groupWidth;
-    
-    // Animate the track to center the player
-    gsap.to(track, {
-      x: newX,
-      duration: 0.4,
-      ease: 'power2.out',
-      overwrite: true
-    });
-  }
+  const playerRect = player.getBoundingClientRect();
+  const wrapperRect = wrapper.getBoundingClientRect();
+  
+  const playerCenterX = playerRect.left + playerRect.width / 2;
+  const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
+  
+  const offsetNeeded = playerCenterX - wrapperCenterX;
+  
+  // Simply adjust by the offset - no normalization needed
+  // The modifiers in the timeline will handle wrapping when it resumes
+  const currentX = gsap.getProperty(track, 'x');
+  const newX = currentX - offsetNeeded;
+  
+  gsap.to(track, {
+    x: newX,
+    duration: 0.4,
+    ease: 'power2.out',
+    overwrite: true
+  });
+}
 
   // ============ MARQUEE CONTROL ============
 
