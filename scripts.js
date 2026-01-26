@@ -1158,45 +1158,55 @@ document.addEventListener('DOMContentLoaded', () => {
     wrapper.querySelectorAll('.video-player').forEach(createVideoElement);
   }
 
-  // ============ MOBILE CENTERING ============
+// ============ MOBILE CENTERING ============
 
-  function centerPlayerOnMobile(player) {
-    if (!isMobile || !marqueeTimeline) return;
+function centerPlayerOnMobile(player) {
+  if (!isMobile || !marqueeTimeline) return;
 
-    const playerRect = player.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    
-    const playerCenterX = playerRect.left + playerRect.width / 2;
-    const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
-    
-    const offsetNeeded = playerCenterX - wrapperCenterX;
-    
-    const currentX = gsap.getProperty(track, 'x');
-    const newX = currentX - offsetNeeded;
-    
-    // Pause timeline and animate freely
-    marqueeTimeline.pause();
-    
-    gsap.to(track, {
-      x: newX,
-      duration: 0.4,
-      ease: 'power2.out',
-      overwrite: true
-    });
-  }
+  const playerRect = player.getBoundingClientRect();
+  const wrapperRect = wrapper.getBoundingClientRect();
+  
+  const playerCenterX = playerRect.left + playerRect.width / 2;
+  const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
+  
+  const offsetNeeded = playerCenterX - wrapperCenterX;
+  
+  const currentX = gsap.getProperty(track, 'x');
+  const newX = currentX - offsetNeeded;
+  
+  // Pause timeline and animate freely
+  marqueeTimeline.pause();
+  
+  gsap.to(track, {
+    x: newX,
+    duration: 0.4,
+    ease: 'power2.out',
+    overwrite: true
+  });
+}
 
-  // ============ MARQUEE CONTROL ============
+ // ============ MARQUEE CONTROL ============
 
-  function updateMarqueeSpeed() {
-    if (!marqueeTimeline || CONFIG.reducedMotion) return;
+function updateMarqueeSpeed() {
+  if (!marqueeTimeline || CONFIG.reducedMotion) return;
 
-    const shouldPause = isHovering || currentlyPlayingVideo;
-    const targetTimeScale = shouldPause ? 0 : 1;
+  const shouldPause = isHovering || currentlyPlayingVideo;
 
-    gsap.killTweensOf(marqueeTimeline);
-    
-    // If resuming on mobile, sync timeline progress to current track position
-    if (!shouldPause && isMobile) {
+  gsap.killTweensOf(marqueeTimeline);
+  
+  if (shouldPause) {
+    // On desktop, ease the timeScale down. On mobile, timeline is already paused by centerPlayerOnMobile
+    if (!isMobile) {
+      gsap.to(marqueeTimeline, {
+        timeScale: 0,
+        duration: CONFIG.easeDuration,
+        ease: 'power2.out'
+      });
+    }
+  } else {
+    // Resuming
+    if (isMobile) {
+      // Re-sync timeline to current track position
       const currentX = gsap.getProperty(track, 'x');
       const groupWidth = originalGroup.offsetWidth;
       
@@ -1210,14 +1220,20 @@ document.addEventListener('DOMContentLoaded', () => {
       // Calculate progress (0 to 1) based on position
       const progress = Math.abs(normalizedX) / groupWidth;
       marqueeTimeline.progress(progress);
+      
+      // Reset timeScale and play
+      marqueeTimeline.timeScale(1);
+      marqueeTimeline.play();
+    } else {
+      // Desktop: ease timeScale back up
+      gsap.to(marqueeTimeline, {
+        timeScale: 1,
+        duration: CONFIG.easeDuration,
+        ease: 'power2.out'
+      });
     }
-    
-    gsap.to(marqueeTimeline, {
-      timeScale: targetTimeScale,
-      duration: CONFIG.easeDuration,
-      ease: 'power2.out'
-    });
   }
+}
 
   // ============ VIDEO PLAYER ============
 
