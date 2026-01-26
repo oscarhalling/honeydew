@@ -353,71 +353,62 @@ window.addEventListener('load', () => {
 // =============================================
 // Configuration of Lenis SMOOTH SCROLL and syncing with GSAP
 // =============================================
-const lenis = new Lenis({
+window.lenis = new Lenis({
   lerp: 0.075,
   smoothWheel: true,
   wheelMultiplier: 1,
 });
-
 // Syncing Lenis with GSAP ScrollTrigger
-lenis.on('scroll', ScrollTrigger.update);
+window.lenis.on('scroll', ScrollTrigger.update);
 gsap.ticker.add((time) => {
-  lenis.raf(time * 1000);
+  window.lenis.raf(time * 1000);
 });
 gsap.ticker.lagSmoothing(0);
-
 // =============================================
 // Handle Safari tab throttling (visibility change)
 // =============================================
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // Tab hidden - pause everything
     gsap.ticker.sleep();
-    lenis.stop();
+    window.lenis.stop();
   } else {
-    // Tab visible - resume everything
     gsap.ticker.wake();
-    lenis.start();
+    window.lenis.start();
     
-    // Give browser a moment to stabilize, then refresh ScrollTrigger
     requestAnimationFrame(() => {
       ScrollTrigger.refresh();
     });
     
-    // Reset CSS marquee animations to prevent jumpiness
     document.querySelectorAll('[class*="marquee-track"]').forEach(el => {
       const currentAnimation = el.style.animation;
       if (currentAnimation || getComputedStyle(el).animationName !== 'none') {
         el.style.animation = 'none';
-        el.offsetHeight; // Force reflow
+        el.offsetHeight;
         el.style.animation = '';
       }
     });
     
-    // Reset GSAP marquee timelines
     gsap.globalTimeline.getChildren(true, true, true).forEach(tween => {
       if (tween.repeat && tween.repeat() === -1) {
-        // Force infinite timelines to recalculate
         const currentProgress = tween.progress();
         tween.progress(0).progress(currentProgress);
       }
     });
   }
 });
-
 // Setting Lenis controls via data attributes
 $("[data-lenis-start]").on("click", function () {
-  lenis.start();
+  window.lenis.start();
 });
 $("[data-lenis-stop]").on("click", function () {
-  lenis.stop();
+  window.lenis.stop();
 });
 $("[data-lenis-toggle]").on("click", function () {
   $(this).toggleClass("stop-scroll");
   if ($(this).hasClass("stop-scroll")) {
-    lenis.stop();
+    window.lenis.stop();
   } else {
-    lenis.start();
+    window.lenis.start();
   }
 });
 
