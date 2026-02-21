@@ -774,3 +774,657 @@ document.addEventListener('DOMContentLoaded', () => {
   startAutoplay();
 });
 
+// =============================================
+// VideoPlayer — Standalone HLS Video Player
+// =============================================
+// Works on any element with class .video-player
+// Reads data-video-hls and data-poster attributes
+//
+// Usage:
+//   VideoPlayer.init('.video-player');           // init all on page
+//   VideoPlayer.initElement(el);                 // init single element
+//   VideoPlayer.initElement(el, { onPlay, onPause, onReset }); // with callbacks
+//
+// Public API on each element:
+//   el._videoPlayer.play()
+//   el._videoPlayer.pause()
+//   el._videoPlayer.reset()
+//   el._videoPlayer.toggle()
+//   el._videoPlayer.preload()
+//   el._videoPlayer.destroy()
+window.VideoPlayer = (function () {
+  'use strict';
+
+  // ============ HLS SUPPORT ============
+  const supportsHlsNatively = (() => {
+    const video = document.createElement('video');
+    return video.canPlayType('application/vnd.apple.mpegurl') !== '';
+  })();
+
+  const hlsInstances = new Map();
+
+  function initHls(video, src) {
+    if (supportsHlsNatively) {
+      video.src = src;
+      return;
+    }
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        capLevelToPlayerSize: true,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        startLevel: 2,
+        abrEwmaDefaultEstimate: 5000000,
+      });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.startLoad();
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+          } else {
+            hls.destroy();
+          }
+        }
+      });
+      hlsInstances.set(video, hls);
+    } else {
+      video.src = src;
+    }
+  }
+
+  function destroyHls(video) {
+    const hls = hlsInstances.get(video);
+    if (hls) {
+      hls.destroy();
+      hlsInstances.delete(video);
+    }
+  }
+
+  // ============ ACTIVE PLAYER TRACKING ============
+  let activePlayer = null;
+
+  function getActivePlayer() {
+    return activePlayer;
+  }
+
+  function clearActivePlayer(player) {
+    if (activePlayer === player) {
+      activePlayer = null;
+    }
+  }
+
+  // ============ DOM CREATION ============
+  function createVideoElements(player) {
+    const hlsSrc = player.dataset.videoHls;
+    if (!hlsSrc || player.querySelector('video')) return;
+
+    const fragment = document.createDocumentFragment();
+    const video = document.createElement('video');
+    video.loop = true;
+    video.playsInline = true;
+    video.muted = false;
+    video.preload = 'none';
+    video.className = 'video-el';
+    video._hlsSrc = hlsSrc;
+    fragment.appendChild(video);
+
+    const posterSrc = player.dataset.poster;
+    if (posterSrc) {
+      const poster = document.createElement('img');
+      poster.src = posterSrc;
+      poster.alt = '';
+      poster.className = 'video-poster';
+      fragment.appendChild(poster);
+      player._poster = poster;
+    }
+
+    player.insertBefore(fragment, player.firstChild);
+  }
+
+  // ============ PLAYER INIT ============
+  function initElement(player, callbacks) {
+    if (player._videoPlayer) return player._videoPlayer;
+
+    const cb = callbacks || {};
+    createVideoElements(player);
+
+    const video = player.querySelector('video');
+    if (!video) return null;
+
+    const controls = player.querySelector('.video-controls');
+    const playBtn = player.querySelector('.video-play-btn');
+    const muteBtn = player.querySelector('.video-mute-btn');
+    const poster = player._poster;
+
+    let hlsLoaded = false;
+    let isPlaying = false;
+
+    if (muteBtn) {
+      gsap.set(muteBtn, { autoAlpha: 0, scale: 0.7 });
+    }
+
+    // --- Visual helpers ---
+    function showVideo() {
+      if (poster) poster.style.opacity = '0';
+      video.style.zIndex = '3';
+    }
+
+    function showPoster() {
+      if (poster) poster.style.opacity = '1';
+      video.style.zIndex = '1';
+    }
+
+    function setUI(playing) {
+      if (playing) {
+        playBtn?.classList.add('is-playing');
+        if (controls) gsap.to(controls, { width: 54, height: 54, duration: 0.25, ease: 'power2.inOut' });
+        if (playBtn) gsap.to(playBtn, { scale: 0.65, duration: 0.25, ease: 'power2.inOut' });
+        if (muteBtn) gsap.to(muteBtn, { autoAlpha: 1, scale: 1, duration: 0.25, delay: 0.05, ease: 'back.out(1.7)' });
+      } else {
+        playBtn?.classList.remove('is-playing');
+        if (controls) gsap.to(controls, { width: 70, height: 70, duration: 0.25, ease: 'power2.inOut' });
+        if (playBtn) gsap.to(playBtn, { scale: 1, duration: 0.25, ease: 'power2.inOut' });
+        if (muteBtn) gsap.to(muteBtn, { autoAlpha: 0, scale: 0.7, duration: 0.2, ease: 'power2.in' });
+        showPoster();
+      }
+    }
+
+    // --- Core actions ---
+    function preload() {
+      if (!hlsLoaded && video._hlsSrc) {
+        initHls(video, video._hlsSrc);
+        hlsLoaded = true;
+      }
+    }
+
+    function play() {
+      preload();
+
+      // Stop any other active player
+      if (activePlayer && activePlayer !== player) {
+        activePlayer._videoPlayer?.reset();
+      }
+
+      activePlayer = player;
+      isPlaying = true;
+      setUI(true);
+
+      // *** FIX: Fire onPlay SYNCHRONOUSLY so centering happens immediately,
+      // before the marquee has any chance to resume from the previous player's reset.
+      // This eliminates the race condition where async .then() fires on a stale player.
+      cb.onPlay?.(player);
+
+      // Show video once it has frames.
+      // We check readyState for an immediate reveal, but ALSO listen for the
+      // 'playing' event as a robust fallback. The old code relied solely on
+      // 'loadeddata', which fires only once — if HLS preloaded on mouseenter
+      // and loadeddata already fired before play() was called, the listener
+      // would never trigger, leaving the poster visible while audio played.
+      // The 'playing' event fires every time playback actually starts,
+      // regardless of prior loading state.
+      if (video.readyState >= 2) {
+        showVideo();
+      }
+
+      const onPlaying = () => {
+        video.removeEventListener('playing', onPlaying);
+        if (activePlayer === player && isPlaying) {
+          showVideo();
+        }
+      };
+      video.addEventListener('playing', onPlaying);
+
+      video.play().catch((err) => {
+        console.warn('Play failed:', err);
+        video.removeEventListener('playing', onPlaying);
+        // Only clean up if we're still the active player
+        if (activePlayer === player) {
+          activePlayer = null;
+          isPlaying = false;
+          setUI(false);
+          cb.onPlayError?.(player, err);
+        }
+      });
+    }
+
+    function pause() {
+      video.pause();
+      clearActivePlayer(player);
+      isPlaying = false;
+      setUI(false);
+      cb.onPause?.(player);
+    }
+
+    function reset() {
+      video.pause();
+      video.currentTime = 0;
+      clearActivePlayer(player);
+      isPlaying = false;
+      setUI(false);
+      cb.onReset?.(player);
+    }
+
+    function toggle() {
+      video.paused ? play() : pause();
+    }
+
+    function destroy() {
+      if (activePlayer === player) activePlayer = null;
+      video.pause();
+      destroyHls(video);
+      video.remove();
+      if (poster) poster.remove();
+      delete player._videoPlayer;
+      delete player._poster;
+    }
+
+    // --- Events ---
+    player.addEventListener('mouseenter', preload);
+
+    player.addEventListener('click', (e) => {
+      if (muteBtn?.contains(e.target)) return;
+      toggle();
+    });
+
+    muteBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      video.muted = !video.muted;
+      muteBtn.classList.toggle('is-muted', video.muted);
+    });
+
+    video.addEventListener('ended', () => {
+      if (activePlayer === player) pause();
+    });
+
+    // --- Public API ---
+    const api = { play, pause, reset, toggle, preload, destroy, video };
+    player._videoPlayer = api;
+    return api;
+  }
+
+  // ============ BULK INIT ============
+  function init(selector, callbacks) {
+    const sel = selector || '.video-player';
+    const players = document.querySelectorAll(sel);
+    players.forEach((p) => initElement(p, callbacks));
+  }
+
+  // ============ GLOBAL CLICK-OUTSIDE ============
+  document.addEventListener('click', (e) => {
+    if (activePlayer && !e.target.closest('.video-player')) {
+      activePlayer._videoPlayer?.pause();
+    }
+  });
+
+  // ============ VISIBILITY ============
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && activePlayer) {
+      activePlayer._videoPlayer?.reset();
+    }
+  });
+
+  // ============ AUTO-INIT ============
+  function autoInit() {
+    const players = document.querySelectorAll('.video-player:not(.video-testimonials-wrapper .video-player)');
+    if (!players.length) return;
+    players.forEach((p) => initElement(p));
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoInit);
+  } else {
+    requestAnimationFrame(autoInit);
+  }
+
+  return {
+    init,
+    initElement,
+    destroyHls,
+    getActivePlayer,
+  };
+})();
+
+
+// =============================================
+// Video Testimonials Marquee (Rewritten)
+// =============================================
+// KEY ARCHITECTURAL CHANGE:
+// Replaced the GSAP repeating timeline + modifier approach with a
+// ticker-based position tracker. This decouples velocity control
+// from position control, eliminating the root cause of all three bugs.
+//
+// The old approach used a single gsap.to(track, { x, repeat: -1, modifiers })
+// timeline, then tried to animate both its `time` (for centering) and
+// `timeScale` (for pause/resume) simultaneously. Since gsap.killTweensOf()
+// kills ALL tweens on a target regardless of property, these would
+// constantly clobber each other during rapid interactions.
+//
+// The new approach:
+//   motion.position  — unbounded cumulative pixel offset, wrapped only at render time
+//   motion.velocity  — 0 (stopped), 1 (forward), -1 (reverse)
+//   velocityTween    — eases velocity for smooth start/stop
+//   centerTween      — eases position for smooth centering
+// These are independent tweens on separate properties, so they never conflict.
+// =============================================
+(function () {
+  'use strict';
+
+  // ============ EARLY EXIT ============
+  const wrapper = document.querySelector('.video-testimonials-wrapper');
+  if (!wrapper) return;
+  const track = wrapper.querySelector('.video-testimonials-marquee-track');
+  const originalGroup = track?.querySelector('.video-testimonials-marquee-group');
+  if (!track || !originalGroup) return;
+
+  // ============ CONFIG ============
+  const CONFIG = {
+    speed: 50,           // pixels per second
+    easeDuration: 0.8,   // seconds to ease velocity in/out
+    centerDuration: 0.7, // seconds to slide player to center
+    centerEase: 'sine.inOut',
+    scrollThreshold: 10,
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    reverseOnScroll: true,
+    viewportMargin: '100px 0px',
+  };
+
+  // ============ STATE ============
+  const state = {
+    groupWidth: 0,
+    direction: 1,
+    isHovering: false,
+    isInView: false,
+    lastScrollY: window.scrollY,
+    scrollRAF: null,
+    lastTouchTime: 0,
+  };
+
+  // Decoupled motion state — this is the core improvement.
+  // `position` is an unbounded cumulative pixel value. We apply modulo
+  // only when setting the CSS transform, so centering never hits a
+  // wrapping boundary in the animation itself.
+  const motion = {
+    position: 0,   // cumulative x offset (pixels, unbounded)
+    velocity: 0,   // speed multiplier: 0 = stopped, 1 = forward, -1 = reverse
+  };
+
+  let velocityTween = null;  // current tween easing velocity
+  let centerTween = null;    // current tween easing position for centering
+  let tickerActive = false;
+
+  // ============ RENDERING ============
+  function applyPosition() {
+    if (!state.groupWidth) return;
+    // Wrap into [-groupWidth, 0) range for seamless visual loop
+    let x = motion.position % state.groupWidth;
+    if (x > 0) x -= state.groupWidth;
+    gsap.set(track, { x });
+  }
+
+  // Called every frame by gsap.ticker
+  function tick() {
+    if (!state.isInView) return;
+    // During centering, the centerTween's onUpdate handles position — skip tick
+    if (centerTween?.isActive()) return;
+    if (motion.velocity === 0) return;
+
+    const dt = gsap.ticker.deltaRatio(60); // 1.0 at 60fps, 2.0 at 30fps, etc.
+    motion.position -= (CONFIG.speed / 60) * motion.velocity * dt;
+    applyPosition();
+  }
+
+  // ============ MOTION CONTROL ============
+  function killVelocity() {
+    if (velocityTween) { velocityTween.kill(); velocityTween = null; }
+  }
+
+  function killCenter() {
+    if (centerTween) { centerTween.kill(); centerTween = null; }
+  }
+
+  function hasActivePlayer() {
+    const ap = VideoPlayer.getActivePlayer();
+    return ap && wrapper.contains(ap);
+  }
+
+  function shouldPause() {
+    return state.isHovering || hasActivePlayer();
+  }
+
+  function updateMarquee() {
+    if (CONFIG.reducedMotion) return;
+
+    if (!state.isInView) {
+      killVelocity();
+      killCenter();
+      motion.velocity = 0;
+      track.style.willChange = 'auto';
+      return;
+    }
+
+    track.style.willChange = 'transform';
+
+    const target = shouldPause() ? 0 : state.direction;
+
+    // Only create a new tween if velocity isn't already at target
+    if (motion.velocity === target && !velocityTween) return;
+
+    killVelocity();
+    velocityTween = gsap.to(motion, {
+      velocity: target,
+      duration: CONFIG.easeDuration,
+      ease: 'power3.out',
+      onComplete() { velocityTween = null; },
+    });
+  }
+
+  function setDirection(dir) {
+    if (state.direction === dir) return;
+    state.direction = dir;
+    if (!shouldPause()) {
+      killVelocity();
+      velocityTween = gsap.to(motion, {
+        velocity: dir,
+        duration: 0.5,
+        ease: 'power3.out',
+        onComplete() { velocityTween = null; },
+      });
+    }
+  }
+
+  // Smoothly slide the track so `player` ends up centered in the wrapper.
+  // Because we animate `motion.position` directly (an unbounded number),
+  // there's no timeline repeat boundary to cross — the tween is always smooth.
+  function centerPlayer(player) {
+    if (!state.groupWidth) return;
+
+    // Kill any in-flight motion — full stop
+    killVelocity();
+    killCenter();
+    motion.velocity = 0;
+
+    const playerRect = player.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const offset =
+      playerRect.left + playerRect.width / 2 - (wrapperRect.left + wrapperRect.width / 2);
+
+    if (Math.abs(offset) < 2) return;
+
+    centerTween = gsap.to(motion, {
+      position: motion.position - offset,
+      duration: CONFIG.centerDuration,
+      ease: CONFIG.centerEase,
+      onUpdate: applyPosition,
+      onComplete() { centerTween = null; },
+    });
+  }
+
+  // ============ SCROLL ============
+  function processScroll() {
+    state.scrollRAF = null;
+    if (!CONFIG.reverseOnScroll || shouldPause() || !state.isInView) return;
+    const currentY = window.scrollY;
+    const delta = currentY - state.lastScrollY;
+    state.lastScrollY = currentY;
+    if (Math.abs(delta) < CONFIG.scrollThreshold) return;
+    setDirection(delta > 0 ? 1 : -1);
+  }
+
+  function handleScroll() {
+    if (!state.isInView) return;
+    if (!state.scrollRAF) {
+      state.scrollRAF = requestAnimationFrame(processScroll);
+    }
+  }
+
+  // ============ VIDEO PLAYER CALLBACKS ============
+  const playerCallbacks = {
+    onPlay(player) {
+      centerPlayer(player);
+    },
+    onPause() {
+      updateMarquee();
+    },
+    onReset() {
+      updateMarquee();
+    },
+    onPlayError() {
+      updateMarquee();
+    },
+  };
+
+  // ============ MARQUEE SETUP ============
+  function initMarquee() {
+    killVelocity();
+    killCenter();
+
+    // Remove old clones
+    track
+      .querySelectorAll('.video-testimonials-marquee-group[aria-hidden="true"]')
+      .forEach((clone) => {
+        clone.querySelectorAll('video').forEach(VideoPlayer.destroyHls);
+        clone.remove();
+      });
+
+    gsap.set(track, { x: 0 });
+    motion.position = 0;
+    motion.velocity = 0;
+
+    state.groupWidth = originalGroup.offsetWidth;
+    if (state.groupWidth < 100) return;
+
+    const clonesNeeded = Math.ceil(wrapper.offsetWidth / state.groupWidth) + 2;
+    const fragment = document.createDocumentFragment();
+
+    for (let i = 0; i < clonesNeeded; i++) {
+      const clone = originalGroup.cloneNode(true);
+      clone.setAttribute('aria-hidden', 'true');
+      // Clean cloned players so VideoPlayer re-inits them fresh
+      clone.querySelectorAll('.video-player').forEach((p) => {
+        delete p._videoPlayer;
+        p.querySelector('video')?.remove();
+        p.querySelector('.video-poster')?.remove();
+        delete p._poster;
+      });
+      fragment.appendChild(clone);
+    }
+    track.appendChild(fragment);
+
+    // Init all players inside the marquee with marquee callbacks
+    wrapper.querySelectorAll('.video-player').forEach((p) => {
+      VideoPlayer.initElement(p, playerCallbacks);
+    });
+
+    if (CONFIG.reducedMotion) return;
+
+    // Start the frame ticker (once)
+    if (!tickerActive) {
+      gsap.ticker.add(tick);
+      tickerActive = true;
+    }
+
+    if (state.isInView) {
+      track.style.willChange = 'transform';
+      // Ease in from stopped
+      velocityTween = gsap.to(motion, {
+        velocity: state.direction,
+        duration: CONFIG.easeDuration,
+        ease: 'power3.out',
+        onComplete() { velocityTween = null; },
+      });
+    }
+  }
+
+  // ============ VIEWPORT OBSERVER ============
+  const viewportObserver = new IntersectionObserver(
+    (entries) => {
+      const wasInView = state.isInView;
+      state.isInView = entries[0].isIntersecting;
+
+      if (!state.isInView && wasInView) {
+        const ap = VideoPlayer.getActivePlayer();
+        if (ap && wrapper.contains(ap)) {
+          ap._videoPlayer?.reset();
+        }
+        state.isHovering = false;
+        state.lastScrollY = window.scrollY;
+      }
+
+      updateMarquee();
+    },
+    {
+      rootMargin: CONFIG.viewportMargin,
+      threshold: 0,
+    }
+  );
+
+  // ============ EVENTS ============
+  track.addEventListener(
+    'touchstart',
+    () => {
+      state.lastTouchTime = Date.now();
+    },
+    { passive: true }
+  );
+
+  track.addEventListener('mouseenter', () => {
+    if (Date.now() - state.lastTouchTime < 500) return;
+    state.isHovering = true;
+    updateMarquee();
+  });
+
+  track.addEventListener('mouseleave', () => {
+    if (Date.now() - state.lastTouchTime < 500) return;
+    state.isHovering = false;
+    updateMarquee();
+  });
+
+  window.matchMedia('(max-width: 767px)').addEventListener('change', () => {
+    const ap = VideoPlayer.getActivePlayer();
+    if (ap && wrapper.contains(ap)) {
+      ap._videoPlayer?.reset();
+    }
+    state.isHovering = false;
+    initMarquee();
+  });
+
+  if (CONFIG.reverseOnScroll) {
+    window.addEventListener('scroll', handleScroll, { passive: true });
+  }
+
+  // ============ INIT ============
+  function init() {
+    viewportObserver.observe(wrapper);
+    initMarquee();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    requestAnimationFrame(init);
+  }
+})();
