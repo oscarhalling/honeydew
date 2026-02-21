@@ -722,57 +722,6 @@ const isMobile = getBreakpoint() === 'mobile';
 })();
 
 
-// =============================================
-// Testimonial Carousel, managing slides
-// =============================================
-document.addEventListener('DOMContentLoaded', () => {
-  const testimonials = document.querySelectorAll('.testimonial');
-  const thumbnails = document.querySelectorAll('.testimonials-carousel-nav .w-dyn-item');
-  
-  // Early exit if no testimonials exist
-  if (testimonials.length === 0) return;
-  
-  let currentIndex = 0;
-  let autoplayInterval;
-  const AUTOPLAY_DELAY = 6000;
-  
-  function goToSlide(index) {
-    // Remove active from all
-    testimonials.forEach(t => t.classList.remove('is-active'));
-    thumbnails.forEach(t => t.classList.remove('is-active'));
-    
-    // Add active to target
-    testimonials[index]?.classList.add('is-active');
-    thumbnails[index]?.classList.add('is-active');
-    
-    currentIndex = index;
-  }
-  
-  function nextSlide() {
-    const next = (currentIndex + 1) % testimonials.length;
-    goToSlide(next);
-  }
-  
-  function startAutoplay() {
-    autoplayInterval = setInterval(nextSlide, AUTOPLAY_DELAY);
-  }
-  
-  function stopAutoplay() {
-    clearInterval(autoplayInterval);
-  }
-  
-  // Thumbnail clicks
-  thumbnails.forEach((thumb, index) => {
-    thumb.addEventListener('click', () => {
-      stopAutoplay();
-      goToSlide(index);
-    });
-  });
-  
-  // Initialize
-  goToSlide(0);
-  startAutoplay();
-});
 
 // =============================================
 // VideoPlayer — Standalone HLS Video Player
