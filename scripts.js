@@ -1601,6 +1601,8 @@ document.addEventListener("DOMContentLoaded", () => {
 window.VideoPlayer = (function () {
   'use strict';
 
+  const canHover = window.matchMedia('(hover: hover)').matches;
+
   // ============ HLS SUPPORT ============
   const supportsHlsNatively = (() => {
     const video = document.createElement('video');
@@ -1708,6 +1710,8 @@ window.VideoPlayer = (function () {
 
     let hlsLoaded = false;
     let isPlaying = false;
+    let hideTimer = null;
+    let isPlayBtnVisible = true;
 
     if (muteBtn) {
       gsap.set(muteBtn, { autoAlpha: 0, scale: 0.7 });
@@ -1730,12 +1734,41 @@ window.VideoPlayer = (function () {
         if (controls) gsap.to(controls, { width: 54, height: 54, duration: 0.25, ease: 'power2.inOut' });
         if (playBtn) gsap.to(playBtn, { scale: 0.65, duration: 0.25, ease: 'power2.inOut' });
         if (muteBtn) gsap.to(muteBtn, { autoAlpha: 1, scale: 1, duration: 0.25, delay: 0.05, ease: 'back.out(1.7)' });
+
+        // Auto-hide the play/pause button after a brief flash
+        clearHideTimer();
+        hideTimer = setTimeout(() => {
+          if (isPlaying) hidePlayBtn();
+        }, 800);
       } else {
+        // Paused — always show the play button
+        clearHideTimer();
+        isPlayBtnVisible = true;
         playBtn?.classList.remove('is-playing');
         if (controls) gsap.to(controls, { width: 70, height: 70, duration: 0.25, ease: 'power2.inOut' });
-        if (playBtn) gsap.to(playBtn, { scale: 1, duration: 0.25, ease: 'power2.inOut' });
+        if (playBtn) gsap.to(playBtn, { scale: 1, autoAlpha: 1, duration: 0.25, ease: 'power2.inOut' });
         if (muteBtn) gsap.to(muteBtn, { autoAlpha: 0, scale: 0.7, duration: 0.2, ease: 'power2.in' });
         showPoster();
+      }
+    }
+
+    // --- Play button visibility helpers ---
+    function showPlayBtn() {
+      if (isPlayBtnVisible) return;
+      isPlayBtnVisible = true;
+      if (playBtn) gsap.to(playBtn, { autoAlpha: 1, duration: 0.2, ease: 'power2.out' });
+    }
+
+    function hidePlayBtn() {
+      if (!isPlayBtnVisible) return;
+      isPlayBtnVisible = false;
+      if (playBtn) gsap.to(playBtn, { autoAlpha: 0, duration: 0.3, ease: 'power2.in' });
+    }
+
+    function clearHideTimer() {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
       }
     }
 
@@ -1798,6 +1831,7 @@ window.VideoPlayer = (function () {
     }
 
     function pause() {
+      clearHideTimer();
       video.pause();
       clearActivePlayer(player);
       isPlaying = false;
@@ -1806,6 +1840,7 @@ window.VideoPlayer = (function () {
     }
 
     function reset() {
+      clearHideTimer();
       video.pause();
       video.currentTime = 0;
       clearActivePlayer(player);
@@ -1819,6 +1854,7 @@ window.VideoPlayer = (function () {
     }
 
     function destroy() {
+      clearHideTimer();
       if (activePlayer === player) activePlayer = null;
       video.pause();
       destroyHls(video);
@@ -1830,6 +1866,25 @@ window.VideoPlayer = (function () {
 
     // --- Events ---
     player.addEventListener('mouseenter', preload);
+
+    // Desktop: show/hide play button on hover during playback
+    if (canHover) {
+      player.addEventListener('mouseenter', () => {
+        if (isPlaying) {
+          clearHideTimer();
+          showPlayBtn();
+        }
+      });
+
+      player.addEventListener('mouseleave', () => {
+        if (isPlaying) {
+          clearHideTimer();
+          hideTimer = setTimeout(() => {
+            if (isPlaying) hidePlayBtn();
+          }, 300);
+        }
+      });
+    }
 
     player.addEventListener('click', (e) => {
       if (muteBtn?.contains(e.target)) return;
