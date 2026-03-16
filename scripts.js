@@ -1603,6 +1603,24 @@ window.VideoPlayer = (function () {
 
   const canHover = window.matchMedia('(hover: hover)').matches;
 
+  // ============ VIEWPORT PRELOAD OBSERVER ============
+  // Preloads HLS manifests (~1-2KB) as videos approach the viewport.
+  // One-shot: unobserves after triggering. Works for swipers, marquees, standalone.
+  const preloadObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const player = entry.target;
+          if (player._videoPlayer) {
+            player._videoPlayer.preloadManifest();
+          }
+          preloadObserver.unobserve(player);
+        }
+      });
+    },
+    { rootMargin: '200px 0px', threshold: 0 }
+  );
+
   // ============ HLS SUPPORT ============
   const supportsHlsNatively = (() => {
     const video = document.createElement('video');
@@ -1611,9 +1629,10 @@ window.VideoPlayer = (function () {
 
   const hlsInstances = new Map();
 
-  function initHls(video, src) {
+  function initHls(video, src, autoStartLoad = true) {
     if (supportsHlsNatively) {
       video.src = src;
+      if (!autoStartLoad) video.preload = 'metadata';
       return;
     }
     if (typeof Hls !== 'undefined' && Hls.isSupported()) {
@@ -1622,8 +1641,9 @@ window.VideoPlayer = (function () {
         capLevelToPlayerSize: true,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
-        startLevel: 2,
+        startLevel: 0,
         abrEwmaDefaultEstimate: 5000000,
+        autoStartLoad,
       });
       hls.loadSource(src);
       hls.attachMedia(video);
@@ -1709,6 +1729,7 @@ window.VideoPlayer = (function () {
     const poster = player._poster;
 
     let hlsLoaded = false;
+    let bufferStarted = false;
     let isPlaying = false;
     let hideTimer = null;
     let isPlayBtnVisible = true;
@@ -1745,24 +1766,27 @@ window.VideoPlayer = (function () {
         clearHideTimer();
         isPlayBtnVisible = true;
         playBtn?.classList.remove('is-playing');
-        if (controls) gsap.to(controls, { width: 70, height: 70, duration: 0.25, ease: 'power2.inOut' });
-        if (playBtn) gsap.to(playBtn, { scale: 1, autoAlpha: 1, duration: 0.25, ease: 'power2.inOut' });
+        if (controls) gsap.to(controls, { width: 70, height: 70, autoAlpha: 1, duration: 0.25, ease: 'power2.inOut' });
+        if (playBtn) gsap.to(playBtn, { scale: 1, duration: 0.25, ease: 'power2.inOut' });
         if (muteBtn) gsap.to(muteBtn, { autoAlpha: 0, scale: 0.7, duration: 0.2, ease: 'power2.in' });
         showPoster();
       }
     }
 
     // --- Play button visibility helpers ---
+    // Targets .video-controls (the glass-blur wrapper) so the entire
+    // play/pause pill hides, not just the icon inside it.
+    // The mute button is a sibling element, so it stays visible.
     function showPlayBtn() {
       if (isPlayBtnVisible) return;
       isPlayBtnVisible = true;
-      if (playBtn) gsap.to(playBtn, { autoAlpha: 1, duration: 0.2, ease: 'power2.out' });
+      if (controls) gsap.to(controls, { autoAlpha: 1, duration: 0.2, ease: 'power2.out' });
     }
 
     function hidePlayBtn() {
       if (!isPlayBtnVisible) return;
       isPlayBtnVisible = false;
-      if (playBtn) gsap.to(playBtn, { autoAlpha: 0, duration: 0.3, ease: 'power2.in' });
+      if (controls) gsap.to(controls, { autoAlpha: 0, duration: 0.3, ease: 'power2.in' });
     }
 
     function clearHideTimer() {
@@ -1773,11 +1797,27 @@ window.VideoPlayer = (function () {
     }
 
     // --- Core actions ---
-    function preload() {
-      if (!hlsLoaded && video._hlsSrc) {
-        initHls(video, video._hlsSrc);
-        hlsLoaded = true;
+    function preloadManifest() {
+      if (hlsLoaded || !video._hlsSrc) return;
+      initHls(video, video._hlsSrc, false);
+      hlsLoaded = true;
+    }
+
+    function preloadBuffer() {
+      if (!video._hlsSrc) return;
+      preloadManifest();
+      if (bufferStarted) return;
+      bufferStarted = true;
+      const hls = hlsInstances.get(video);
+      if (hls) {
+        hls.startLoad();
+      } else if (supportsHlsNatively) {
+        video.preload = 'auto';
       }
+    }
+
+    function preload() {
+      preloadBuffer();
     }
 
     function play() {
@@ -1855,6 +1895,7 @@ window.VideoPlayer = (function () {
 
     function destroy() {
       clearHideTimer();
+      preloadObserver.unobserve(player);
       if (activePlayer === player) activePlayer = null;
       video.pause();
       destroyHls(video);
@@ -1902,8 +1943,12 @@ window.VideoPlayer = (function () {
     });
 
     // --- Public API ---
-    const api = { play, pause, reset, toggle, preload, destroy, video };
+    const api = { play, pause, reset, toggle, preload, preloadManifest, preloadBuffer, destroy, video };
     player._videoPlayer = api;
+
+    // Observe for viewport-based manifest preload
+    preloadObserver.observe(player);
+
     return api;
   }
 
