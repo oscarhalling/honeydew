@@ -1635,7 +1635,7 @@ window.VideoPlayer = (function () {
         }
       });
     },
-    { threshold: 0 }
+    { threshold: 0.2 }
   );
 
   // ============ HLS SUPPORT ============
