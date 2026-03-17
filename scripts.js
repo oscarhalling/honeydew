@@ -1705,6 +1705,8 @@ window.VideoPlayer = (function () {
       const poster = document.createElement('img');
       poster.src = posterSrc;
       poster.alt = '';
+      poster.loading = 'lazy';
+      poster.decoding = 'async';
       poster.className = 'video-poster';
       fragment.appendChild(poster);
       player._poster = poster;
@@ -1810,6 +1812,12 @@ window.VideoPlayer = (function () {
       bufferStarted = true;
       const hls = hlsInstances.get(video);
       if (hls) {
+        // On desktop hover, jump ABR to a higher level so the first
+        // buffered segments are closer to 720p instead of the lowest quality.
+        // Mobile keeps startLevel: 0 for fastest first frame.
+        if (canHover && hls.levels.length > 1) {
+          hls.startLevel = Math.min(2, hls.levels.length - 1);
+        }
         hls.startLoad();
       } else if (supportsHlsNatively) {
         video.preload = 'auto';
