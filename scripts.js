@@ -1621,6 +1621,23 @@ window.VideoPlayer = (function () {
     { rootMargin: '200px 0px', threshold: 0 }
   );
 
+  // ============ VIEWPORT PAUSE OBSERVER ============
+  // Pauses the active video when it leaves the viewport (scroll away, swiper slide change).
+  // Excludes marquee players — the marquee has its own viewport observer.
+  const pauseObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) {
+          const player = entry.target;
+          if (player === activePlayer) {
+            player._videoPlayer?.pause();
+          }
+        }
+      });
+    },
+    { threshold: 0 }
+  );
+
   // ============ HLS SUPPORT ============
   const supportsHlsNatively = (() => {
     const video = document.createElement('video');
@@ -1904,6 +1921,7 @@ window.VideoPlayer = (function () {
     function destroy() {
       clearHideTimer();
       preloadObserver.unobserve(player);
+      pauseObserver.unobserve(player);
       if (activePlayer === player) activePlayer = null;
       video.pause();
       destroyHls(video);
@@ -1957,6 +1975,12 @@ window.VideoPlayer = (function () {
     // Observe for viewport-based manifest preload
     preloadObserver.observe(player);
 
+    // Autopause when video leaves viewport (scroll away, swiper slide change).
+    // Marquee players are excluded — the marquee has its own viewport observer.
+    if (!player.closest('.video-testimonials-wrapper')) {
+      pauseObserver.observe(player);
+    }
+
     return api;
   }
 
@@ -2001,7 +2025,6 @@ window.VideoPlayer = (function () {
     getActivePlayer,
   };
 })();
-
 
 // =============================================
 // 4.4 Video Testimonials Marquee (Rewritten)
